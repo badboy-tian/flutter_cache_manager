@@ -26,15 +26,14 @@ class WebHelper {
   }
 
   ///Download the file from the url
-  Future<FileInfo> downloadFile(String url,
-      {Map<String, String> authHeaders, bool ignoreMemCache = false}) async {
+  Future<FileInfo> downloadFile(String url, {Map<String, String> authHeaders, bool ignoreMemCache = false}) async {
     if (!_memCache.containsKey(url) || ignoreMemCache) {
       var completer = new Completer<FileInfo>();
       _downloadRemoteFile(url, authHeaders: authHeaders).then((cacheObject) {
         completer.complete(cacheObject);
       }).catchError((e) {
         completer.completeError(e);
-      }).whenComplete((){
+      }).whenComplete(() {
         _memCache.remove(url);
       });
 
@@ -44,8 +43,7 @@ class WebHelper {
   }
 
   ///Download the file from the url
-  Future<FileInfo> _downloadRemoteFile(String url,
-      {Map<String, String> authHeaders}) async {
+  Future<FileInfo> _downloadRemoteFile(String url, {Map<String, String> authHeaders}) async {
     return Future.sync(() async {
       var cacheObject = await _store.retrieveCacheData(url);
       if (cacheObject == null) {
@@ -64,32 +62,28 @@ class WebHelper {
       var success = false;
 
       var response = await _fileFetcher(url, headers: headers);
-      success = await _handleHttpResponse(response, cacheObject);
+      success = await _handleHttpResponse(response, cacheObject, url: url);
 
       if (!success) {
-        throw HttpException(
-            "No valid statuscode. Statuscode was ${response?.statusCode}");
+        throw HttpException("No valid statuscode. Statuscode was ${response?.statusCode}");
       }
 
       _store.putFile(cacheObject);
       var filePath = p.join(await _store.filePath, cacheObject.relativePath);
 
-      return FileInfo(
-          new File(filePath), FileSource.Online, cacheObject.validTill, url);
+      return FileInfo(new File(filePath), FileSource.Online, cacheObject.validTill, url);
     });
   }
 
-  Future<FileFetcherResponse> _defaultHttpGetter(String url,
-      {Map<String, String> headers}) async {
+  Future<FileFetcherResponse> _defaultHttpGetter(String url, {Map<String, String> headers}) async {
     var httpResponse = await http.get(url, headers: headers);
     return new HttpFileFetcherResponse(httpResponse);
   }
 
-  Future<bool> _handleHttpResponse(
-      FileFetcherResponse response, CacheObject cacheObject) async {
+  Future<bool> _handleHttpResponse(FileFetcherResponse response, CacheObject cacheObject, {url = ""}) async {
     if (response.statusCode == 200) {
       var basePath = await _store.filePath;
-      _setDataFromHeaders(cacheObject, response);
+      _setDataFromHeaders(cacheObject, response, url: url);
       var path = p.join(basePath, cacheObject.relativePath);
 
       var folder = new File(path).parent;
@@ -100,14 +94,13 @@ class WebHelper {
       return true;
     }
     if (response.statusCode == 304) {
-      await _setDataFromHeaders(cacheObject, response);
+      await _setDataFromHeaders(cacheObject, response, url: url);
       return true;
     }
     return false;
   }
 
-  _setDataFromHeaders(
-      CacheObject cacheObject, FileFetcherResponse response) async {
+  _setDataFromHeaders(CacheObject cacheObject, FileFetcherResponse response, {String url = ""}) async {
     //Without a cache-control header we keep the file for a week
     var ageDuration = new Duration(days: 7);
 
@@ -131,10 +124,14 @@ class WebHelper {
     }
 
     var fileExtension = "";
-    if (response.hasHeader("content-type")) {
-      var type = response.header("content-type").split("/");
-      if (type.length == 2) {
-        fileExtension = ".${type[1]}";
+    if (url.isNotEmpty && url.lastIndexOf(".") != -1) {
+      fileExtension = url.substring(url.lastIndexOf(".") + 1, url.length);
+    } else {
+      if (response.hasHeader("content-type")) {
+        var type = response.header("content-type").split("/");
+        if (type.length == 2) {
+          fileExtension = ".${type[1]}";
+        }
       }
     }
 
